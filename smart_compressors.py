@@ -156,7 +156,7 @@ class PruneMaskOnly(QuantizeOnly):
         self.amount_prune = amount_prune
         self.new_weight_with_mask = None
 
-    def fasterquant(self, blocksize=128, percdamp=.01, groupsize=-1):
+    def fasterquant(self, blocksize=256, percdamp=.01, groupsize=-1):
         W = self.layer.weight.data.clone()
         if isinstance(self.layer, nn.Conv2d):
             W = W.flatten(1)
@@ -196,14 +196,14 @@ class PruneMaskOnly(QuantizeOnly):
 
                 if ji == 0:
                     # Determine the weights for pruning mask selection for the next column
-                    copy_linear = torch.nn.Linear(blocksize, W.shape[0]).to(W.device)
-                    copy_linear.weight.data = W[:, j:j+blocksize] ** 2
-                    copy_linear.weight.data /= torch.diag(Hinv).unsqueeze(0)[:, j:j+blocksize]
-
-                    prune.l1_unstructured(copy_linear, name='weight', amount=self.amount_prune)
+                    for out_dim in range(W.shape[0]):
+                        copy_linear = torch.nn.Linear(blocksize, 1).to(W.device)
+                        copy_linear.weight.data = W[out_dim:out_dim+1, j:j+blocksize] ** 2
+#                         print(copy_linear.weight.data.shape, Hinv.shape)
+                        copy_linear.weight.data /= torch.diag(Hinv).unsqueeze(0)[:, j:j+blocksize]
+                        prune.l1_unstructured(copy_linear, name='weight', amount=self.amount_prune)
+                        M[out_dim, j:j+blocksize] = copy_linear.weight_mask.squeeze(0)
                     print(f"{j}:{j+blocksize}", end = ", ")
-                    M[:, j:j+blocksize] = copy_linear.weight_mask
-
                 E[:, j-i] = (1 - M[:, j]) * (W[:, j] / Hinv[j, j])
                 W[:, j:i+blocksize] -= E[:, j-i].unsqueeze(1) * Hinv[j, j:i+blocksize].unsqueeze(0)
 
@@ -222,6 +222,7 @@ class PruneMaskReconstruction(PruneMaskOnly):
 
     def fasterquant(self, blocksize=128, percdamp=.01, groupsize=-1):
         super().fasterquant(blocksize, percdamp, groupsize)
+        print(self.new_weight_with_mask[0])
         (W, M) = self.new_weight_with_mask
         self.layer.weight.data = (W * M.reshape(self.layer.weight.shape)).to(
             self.layer.weight.data.dtype)

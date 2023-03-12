@@ -7,6 +7,8 @@ import torch.nn as nn
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from transformers import OPTForCausalLM
+import torch
+from rwkvstic.load import RWKV
 
 import smart_compressors
 import quant
@@ -18,14 +20,14 @@ if torch.cuda.is_available():
 
 def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=''): # pylint: disable=dangerous-default-value
     """Find linear and conv layers in a model."""
-    if type(module) in layers:
-        return {name: module}
-    res = {}
-    for name1, child in module.named_children():
-        res.update(find_layers(
-            child, layers=layers, name=name + '.' + name1 if name != '' else name1
-        ))
-    return res
+    all are list of list, we covert into nn module and .eval it
+    model.model.key
+    model.model.value
+    model.model.receptance
+    model.model.outputvv
+    model.model.key_ffn
+    model.model.receptance_ffn
+    model.model.value_ffn
 
 def get_wikitext2(nsamples, seed, seqlen, model_card):
     """For now we take nsamples datapoints from wikitext2 and tokenize them."""
@@ -64,15 +66,24 @@ def benchmark(model_to_be_benched, _dataloader):
     model_to_be_benched = model_to_be_benched.to(current_device)
     return loss
 
-def get_opt(model_name):
+class wrapIntoTorchNNModule(nn.Module): # pylint: disable=missing-class-docstring
+    """Wrap a model into a torch.nn.Module. In forward we call the model."""
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+    def forward(self, inp, **kwargs):
+        
+
+def get_rwkv(path):
     """Get opt model."""
     def skip(*args, **kwargs): # pylint: disable=unused-argument, redefined-outer-name
         pass
     torch.nn.init.kaiming_uniform_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
-    model_loaded = OPTForCausalLM.from_pretrained(model_name, torch_dtype='auto')
-    model_loaded.seqlen = model_loaded.config.max_position_embeddings # We need this for the dataloader trimming.
+    model_loaded = RWKV(path)
+    model_loaded.seqlen = 2048 # We need this for the dataloader trimming.
+    
     # If device is CPU then we convert from fp16 to fp32
     if DEVICE.type == 'cpu':
         model_loaded = model_loaded.half().to(torch.float32)
