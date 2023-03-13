@@ -196,14 +196,13 @@ class PruneMaskOnly(QuantizeOnly):
 
                 if ji == 0:
                     # Determine the weights for pruning mask selection for the next column
-                    for out_dim in range(W.shape[0]):
-                        copy_linear = torch.nn.Linear(blocksize, 1).to(W.device)
-                        copy_linear.weight.data = W[out_dim:out_dim+1, j:j+blocksize] ** 2
-#                         print(copy_linear.weight.data.shape, Hinv.shape)
-                        copy_linear.weight.data /= torch.diag(Hinv).unsqueeze(0)[:, j:j+blocksize]
-                        prune.l1_unstructured(copy_linear, name='weight', amount=self.amount_prune)
-                        M[out_dim, j:j+blocksize] = copy_linear.weight_mask.squeeze(0)
+                    copy_linear = torch.nn.Linear(blocksize, W.shape[0]).to(W.device)
+                    copy_linear.weight.data = W[:, j:j+blocksize] ** 2
+                    copy_linear.weight.data /= torch.diag(Hinv).unsqueeze(0)[:, j:j+blocksize]
+
+                    prune.l1_unstructured(copy_linear, name='weight', amount=self.amount_prune)
                     print(f"{j}:{j+blocksize}", end = ", ")
+                    M[:, j:j+blocksize] = copy_linear.weight_mask
                 E[:, j-i] = (1 - M[:, j]) * (W[:, j] / Hinv[j, j])
                 W[:, j:i+blocksize] -= E[:, j-i].unsqueeze(1) * Hinv[j, j:i+blocksize].unsqueeze(0)
 
