@@ -1,4 +1,8 @@
-# Sparse LLMs
+# Sparse + Quant LLMs [WIP]
+
+## Do not use, unless you really know what you are doing. Broken in multiple places.
+
+
 
 Based on Sparse GPT, GPTQ, Optimal Bert Surgeon and others.
 
